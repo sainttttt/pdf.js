@@ -173,6 +173,7 @@ function getViewerConfiguration() {
 }
 
 function webViewerLoad() {
+  console.log('MEOW WOOF')
   const config = getViewerConfiguration();
 
   if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("GENERIC")) {
@@ -196,6 +197,18 @@ function webViewerLoad() {
     }
   }
   PDFViewerApplication.run(config);
+
+  // Toggle visibility of toolbar
+  let toolbar = document.getElementsByClassName("toolbar")[0]
+  document.getElementById("viewerContainer").onclick = (event) => {
+    if (window.getComputedStyle(toolbar).display === 'block') {
+      toolbar.style.display = "none";
+    } else {
+      toolbar.style.display = "block";
+    }
+  };
+
+
 }
 
 // Block the "load" event until all pages are loaded, to ensure that printing
@@ -216,3 +229,40 @@ export {
   AppConstants as PDFViewerApplicationConstants,
   AppOptions as PDFViewerApplicationOptions,
 };
+
+(function(window) {
+  var lastTime = 0,
+    vendors = ['webkit', 'moz'],
+    requestAnimationFrame = window.requestAnimationFrame,
+    cancelAnimationFrame = window.cancelAnimationFrame,
+    i = vendors.length;
+
+  // try to un-prefix existing raf
+  while (--i >= 0 && !requestAnimationFrame) {
+    requestAnimationFrame = window[vendors[i] + 'RequestAnimationFrame'];
+    cancelAnimationFrame = window[vendors[i] + 'CancelRequestAnimationFrame'];
+  }
+
+  // polyfill with setTimeout fallback
+  // heavily inspired from @darius gist mod: https://gist.github.com/paulirish/1579671#comment-837945
+  if (!requestAnimationFrame || !cancelAnimationFrame) {
+    requestAnimationFrame = function(callback) {
+      var now = +Date.now(),
+        nextTime = Math.max(lastTime + 16, now);
+      return setTimeout(function() {
+        callback(lastTime = nextTime);
+      }, nextTime - now);
+    };
+
+    cancelAnimationFrame = clearTimeout;
+  }
+
+  // export to window
+  window.requestAnimationFrame = requestAnimationFrame;
+  window.cancelAnimationFrame = cancelAnimationFrame;
+
+
+
+}(window));
+
+
