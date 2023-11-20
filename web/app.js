@@ -243,6 +243,8 @@ view: null,
  pressed: null,
  xform: null,
 
+  xTranslate: 0,
+
   velocity: null,
  frame: null,
  timestamp: null,
@@ -2843,42 +2845,56 @@ function webViewerWheel(evt) {
 }(window));
 
 
-    function ypos(e) {
+    function pos(e) {
         // touch event
-        if (e.targetTouches && (e.targetTouches.length >= 1)) {
-            return e.targetTouches[0].clientY;
+        if (e.targetTouches && (e.targetTouches.length == 1)) {
+            return {   x: e.targetTouches[0].clientX,
+                       y: e.targetTouches[0].clientY,
+                   }
         }
 
-        // mouse event
-        return e.clientY;
+        // // mouse event
+        // return e.clientY;
     }
 
-    function scroll(y) {
+    function scroll(delta, direction) {
+      console.log('scroll', delta, direction);
 
       var app = PDFViewerApplication;
-        app.offset = (y > app.max) ? app.max : (y < app.min) ? app.min : y;
-      console.log(app.offset);
-      app.offset = app.pdfViewer.container.scrollTop;
+        // app.offset = (y > app.max) ? app.max : (y < app.min) ? app.min : y;
+      // console.log(app.offset);
+
+      if (direction == 'y') {
+        app.offset = app.pdfViewer.container.scrollTop
+        app.pdfViewer.container.scrollTop+= delta;
+      } else {
+        // app.offset = app.pdfViewer.container.scrollLeft;
+        // app.pdfViewer.container.scrollLeft += delta;
+        app.xTranslate += delta
+        $("#viewer").css({'transform' : 'translateX(' + (-app.xTranslate) + 'px)'});
+      }
         // app.view.style['transform'] = 'translateY(' + (-app.offset) + 'px)';
         // app.pdfViewer.container.scrollTop = -app.offset;
-      app.pdfViewer.container.scrollTop += y;
+      // app.pdfViewer.container.scrollTop += y;
+     // scrollProp  += delta;
       //
         // indicator.style[xform] = 'translateY(' + (offset * relative) + 'px)';
     }
 
     function track() {
       console.log('track');
-        var now, elapsed, delta, v;
+        var now, elapsed, deltaY, v;
 
       var app = PDFViewerApplication;
 
         now = Date.now();
         elapsed = now - app.timestamp;
         app.timestamp = now;
-        delta = app.offset - app.frame;
+        deltaY = app.offset - app.frame;
+      console.log('deltaY track', deltaY);
         app.frame = app.offset;
 
-        v = 1000 * delta / (1 + elapsed);
+        v = 1000 * deltaY / (1 + elapsed);
         app.velocity = 0.8 * v + 0.2 * app.velocity;
     }
 
@@ -2890,7 +2906,7 @@ function webViewerTouchStart(evt) {
   console.log('touch start');
 
         app.pressed = true;
-        app.reference = ypos(evt);
+        app.reference = pos(evt);
 
         app.velocity = app.amplitude = 0;
         app.frame = app.offset;
@@ -2927,19 +2943,33 @@ function webViewerTouchMove(evt) {
 
   var app = PDFViewerApplication;
 
-  var y, delta;
+
+  $("#viewerContainer").css({"overflow-x": "hidden"});
+  var curPos, delta;
   if (app.pressed) {
-    y = ypos(evt);
-    delta = app.reference - y;
-    console.log(delta)
+    curPos = pos(evt);
+    var deltaY = app.reference.y - curPos.y;
+    var deltaX = app.reference.x - curPos.x;
+    console.log('deltaY', deltaY)
+    console.log('deltaX', deltaX)
     // if (delta > 2 || delta < -2) {
-      app.reference = y;
-    scroll(delta);
+    app.reference = curPos;
+    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+
+      // requestAnimationFrame(() => {scroll(deltaY, "y")});
+      console.log('scrollY')
+    } else {
+
+      // $("#viewerContainer").css({"overflow-x": "hidden"});
+      evt.preventDefault();
+      requestAnimationFrame(() => {scroll(deltaX, "x")});
+
+      // console.log('scrollX')
+    }
       // app.pdfViewer.container.scrollTop += delta;;
     // }
   }
 
-  evt.preventDefault();
 
   if (!PDFViewerApplication._touchInfo || evt.touches.length !== 2) {
     return;
@@ -3056,16 +3086,16 @@ function autoScroll() {
   console.log('autoScroll');
   if (app.amplitude) {
     elapsed = Date.now() - app.timestamp;
-    delta = -app.amplitude * Math.exp(-elapsed / app.timeConstant) * 0.3;
+    delta = -app.amplitude * Math.exp(-elapsed / app.timeConstant) * 0.1;
     console.log('delta', delta);
-    if (delta > 0.5 || delta < -0.5) {
+    // if (delta > 0.5 || delta < -0.5) {
 
       // scroll(app.target + delta);
-      scroll(-delta)
+      scroll(-delta, "y")
       requestAnimationFrame(autoScroll);
-    } else {
+    // } else {
       // scroll(app.target);
-    }
+    // }
   }
 }
 
@@ -3082,10 +3112,8 @@ function webViewerTouchEnd(evt) {
             app.amplitude = 0.8 * app.velocity;
             app.target = Math.round(app.offset + app.amplitude);
             app.timestamp = Date.now();
-            requestAnimationFrame(autoScroll);
+            // requestAnimationFrame(autoScroll);
         }
-
-
 
   if (!PDFViewerApplication._touchInfo) {
     return;

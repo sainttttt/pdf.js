@@ -198,6 +198,9 @@ function webViewerLoad() {
   }
   PDFViewerApplication.run(config);
 
+  // Dark mode
+  document.getElementById('viewer').style.filter = 'invert(64%) contrast(228%) brightness(80%) hue-rotate(180deg)'
+
   // Toggle visibility of toolbar
   let toolbar = document.getElementsByClassName("toolbar")[0]
   document.getElementById("viewerContainer").onclick = (event) => {

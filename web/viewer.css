@@ -15,6 +15,10 @@
 
 @import url(pdf_viewer.css);
 
+#viewerContainer::-webkit-scrollbar{
+    display: none;
+  }
+
 :root {
   --dir-factor: 1;
   /*#if MOZCENTRAL*/
@@ -302,7 +306,7 @@ body {
 #viewerContainer {
   overflow: auto;
   position: absolute;
-  top: 32px;
+  top: 0px;
   right: 0;
   bottom: 0;
   left: 0;
@@ -319,7 +323,7 @@ body {
 }
 
 .toolbar {
-  position: relative;
+  position: absolute;
   left: 0;
   right: 0;
   z-index: 9999;

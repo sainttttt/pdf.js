@@ -122,7 +122,13 @@ function scrollIntoView(element, spot, scrollMatches = false) {
   // Assuming offsetParent is available (it's not available when viewer is in
   // hidden iframe or object). We have to scroll: if the offsetParent is not set
   // producing the error. See also animationStarted.
-  let parent = element.offsetParent;
+  console.log('HERE MEOW');
+
+  var parent = document.querySelector("#viewerContainer");
+  if (element.className == "thumbnail selected") {
+    parent = element.offsetParent;
+  }
+
   if (!parent) {
     console.error("offsetParent is not set -- cannot scroll");
     return;
