@@ -26,7 +26,15 @@ class BaseFilterFactory {
     return "none";
   }
 
-  destroy() {}
+  addHCMFilter(fgColor, bgColor) {
+    return "none";
+  }
+
+  addHighlightHCMFilter(fgColor, bgColor, newFgColor, newBgColor) {
+    return "none";
+  }
+
+  destroy(keepHCM = false) {}
 }
 
 class BaseCanvasFactory {
