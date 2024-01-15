@@ -961,7 +961,7 @@ view: null,
 
     if (
       (typeof PDFJSDev === "undefined" || !PDFJSDev.test("MOZCENTRAL")) &&
-      args.url
+        args.url
     ) {
       // The Firefox built-in viewer always calls `setTitleUsingUrl`, before
       // `initPassiveLoading`, and it never provides an `originalUrl` here.
@@ -2816,14 +2816,13 @@ function webViewerWheel(evt) {
 
 
 
-
-(function(window) {
+window.addEventListener("DOMContentLoaded", () => {
 
   var app = PDFViewerApplication;
 
     app.view = document.getElementById("viewer");
 
-    app.max = parseInt(getComputedStyle(app.view).height, 10) - innerHeight;
+    // app.max = parseInt(getComputedStyle(app.view).height, 10) - innerHeight;
   console.log('appmax', app.max);
     app.offset = app.min = 0;
     app.pressed = false;
@@ -2841,8 +2840,7 @@ function webViewerWheel(evt) {
         }
         return true;
     });
-
-}(window));
+})
 
 
     function pos(e) {
