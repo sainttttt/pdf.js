@@ -216,13 +216,13 @@ function webViewerLoad() {
 
   // Toggle visibility of toolbar
   let toolbar = document.getElementsByClassName("toolbar")[0]
-  document.getElementById("viewerContainer").onclick = (event) => {
+  document.getElementById("viewerContainer").addEventListener("dblclick",  event => {
     if (window.getComputedStyle(toolbar).display === 'block') {
       toolbar.style.display = "none";
     } else {
       toolbar.style.display = "block";
     }
-  };
+  });
 
 
 }
