@@ -345,6 +345,8 @@ class PDFLinkService {
     if (!this.pdfDocument) {
       return;
     }
+
+    console.log("setting hash");
     let pageNumber, dest;
     if (hash.includes("=")) {
       const params = parseQueryString(hash);
@@ -412,6 +414,7 @@ class PDFLinkService {
         }
       }
       if (dest) {
+        console.log("dest")
         this.pdfViewer.scrollPageIntoView({
           pageNumber: pageNumber || this.page,
           destArray: dest,

@@ -660,6 +660,7 @@ view: null,
       file = AppOptions.get("defaultUrl");
     }
 
+    console.log("meow to you")
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       const fileInput = appConfig.openFileInput;
       fileInput.value = null;
@@ -992,6 +993,8 @@ view: null,
    * @returns {Promise} - Promise that is resolved when the document is opened.
    */
   async open(args) {
+    console.log("woof for cat");
+    console.log("args", args);
     if (this.pdfLoadingTask) {
       // We need to destroy already opened document.
       await this.close();
@@ -1308,10 +1311,22 @@ view: null,
           let scrollMode = AppOptions.get("scrollModeOnLoad");
           let spreadMode = AppOptions.get("spreadModeOnLoad");
 
+          console.log("squeak")
           if (stored?.page && viewOnLoad !== ViewOnLoad.INITIAL) {
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const pageNum = urlParams.get('page')
+            console.log(pageNum)
+
             hash =
               `page=${stored.page}&zoom=${zoom || stored.zoom},` +
               `${stored.scrollLeft},${stored.scrollTop}`;
+
+            if (pageNum) {
+              hash =
+                `page=${pageNum}&zoom=${zoom || stored.zoom},` +
+                  `${stored.scrollLeft},${800}`;
+            }
 
             rotation = parseInt(stored.rotation, 10);
             // Always let user preference take precedence over the view history.
@@ -1340,6 +1355,10 @@ view: null,
             // scrollMode = modes.scrollMode;
             spreadMode = modes.spreadMode;
           }
+
+          console.log("wrrreooeow");
+          console.log(location.href.split("#", 1)[0]);
+          console.log(hash);
 
           this.setInitialView(hash, {
             rotation,
@@ -1736,7 +1755,10 @@ view: null,
       setRotation(this.initialRotation);
       delete this.initialRotation;
 
-      this.pdfLinkService.setHash(this.initialBookmark);
+      // this.pdfLinkService.setHash(this.initialBookmark);
+      console.log("bookmark")
+      // console.log(this.initialBookmark)
+      this.pdfLinkService.setHash(storedHash)
       this.initialBookmark = null;
     } else if (storedHash) {
       setRotation(rotation);
