@@ -18,10 +18,11 @@ import {
   AnnotationEditorType,
   Util,
 } from "../../shared/util.js";
+import { FreeOutliner, Outliner } from "./outliner.js";
 import { AnnotationEditor } from "./editor.js";
 import { bindEvents } from "./tools.js";
 import { ColorPicker } from "./color_picker.js";
-import { Outliner } from "./outliner.js";
+import { noContextMenu } from "../display_utils.js";
 
 /**
  * Basic draw editor in order to generate an Highlight annotation.
@@ -41,15 +42,21 @@ class HighlightEditor extends AnnotationEditor {
 
   #id = null;
 
+  #isFreeHighlight = false;
+
   #lastPoint = null;
 
   #opacity;
 
   #outlineId = null;
 
+  #thickness;
+
   static _defaultColor = null;
 
   static _defaultOpacity = 1;
+
+  static _defaultThickness = 12;
 
   static _l10nPromise;
 
@@ -57,16 +64,29 @@ class HighlightEditor extends AnnotationEditor {
 
   static _editorType = AnnotationEditorType.HIGHLIGHT;
 
+  static _freeHighlightId = -1;
+
+  static _freeHighlight = null;
+
+  static _freeHighlightClipId = "";
+
   constructor(params) {
     super({ ...params, name: "highlightEditor" });
     this.color = params.color || HighlightEditor._defaultColor;
+    this.#thickness = params.thickness || HighlightEditor._defaultThickness;
     this.#opacity = params.opacity || HighlightEditor._defaultOpacity;
     this.#boxes = params.boxes || null;
     this._isDraggable = false;
 
-    this.#createOutlines();
-    this.#addToDrawLayer();
-    this.rotate(this.rotation);
+    if (params.highlightId > -1) {
+      this.#isFreeHighlight = true;
+      this.#createFreeOutlines(params);
+      this.#addToDrawLayer();
+    } else {
+      this.#createOutlines();
+      this.#addToDrawLayer();
+      this.rotate(this.rotation);
+    }
   }
 
   #createOutlines() {
@@ -95,19 +115,84 @@ class HighlightEditor extends AnnotationEditor {
     ];
   }
 
+  #createFreeOutlines({ highlightOutlines, highlightId, clipPathId }) {
+    this.#highlightOutlines = highlightOutlines;
+    const extraThickness = 1.5;
+    this.#focusOutlines = highlightOutlines.getNewOutline(
+      /* Slightly bigger than the highlight in order to have a little
+         space between the highlight and the outline. */
+      this.#thickness / 2 + extraThickness,
+      /* innerMargin = */ 0.0025
+    );
+
+    if (highlightId >= 0) {
+      this.#id = highlightId;
+      this.#clipPathId = clipPathId;
+      // We need to redraw the highlight because we change the coordinates to be
+      // in the box coordinate system.
+      this.parent.drawLayer.finalizeLine(highlightId, highlightOutlines);
+      this.#outlineId = this.parent.drawLayer.highlightOutline(
+        this.#focusOutlines
+      );
+    } else if (this.parent) {
+      this.parent.drawLayer.updateLine(this.#id, highlightOutlines);
+      this.parent.drawLayer.updateLine(this.#outlineId, this.#focusOutlines);
+    }
+    const { x, y, width, height, lastPoint } = highlightOutlines.box;
+    this.#lastPoint = lastPoint;
+    switch (this.rotation) {
+      case 0:
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        break;
+      case 90: {
+        const [pageWidth, pageHeight] = this.parentDimensions;
+        this.x = y;
+        this.y = 1 - x;
+        this.width = (width * pageHeight) / pageWidth;
+        this.height = (height * pageWidth) / pageHeight;
+        break;
+      }
+      case 180:
+        this.x = 1 - x;
+        this.y = 1 - y;
+        this.width = width;
+        this.height = height;
+        break;
+      case 270: {
+        const [pageWidth, pageHeight] = this.parentDimensions;
+        this.x = 1 - y;
+        this.y = x;
+        this.width = (width * pageHeight) / pageWidth;
+        this.height = (height * pageWidth) / pageHeight;
+        break;
+      }
+    }
+  }
+
+  /** @inheritdoc */
   static initialize(l10n, uiManager) {
     AnnotationEditor.initialize(l10n, uiManager);
     HighlightEditor._defaultColor ||=
       uiManager.highlightColors?.values().next().value || "#fff066";
   }
 
+  /** @inheritdoc */
   static updateDefaultParams(type, value) {
     switch (type) {
       case AnnotationEditorParamsType.HIGHLIGHT_DEFAULT_COLOR:
         HighlightEditor._defaultColor = value;
         break;
+      case AnnotationEditorParamsType.HIGHLIGHT_THICKNESS:
+        HighlightEditor._defaultThickness = value;
+        break;
     }
   }
+
+  /** @inheritdoc */
+  translateInPage(x, y) {}
 
   /** @inheritdoc */
   get toolbarPosition() {
@@ -120,6 +205,9 @@ class HighlightEditor extends AnnotationEditor {
       case AnnotationEditorParamsType.HIGHLIGHT_COLOR:
         this.#updateColor(value);
         break;
+      case AnnotationEditorParamsType.HIGHLIGHT_THICKNESS:
+        this.#updateThickness(value);
+        break;
     }
   }
 
@@ -128,6 +216,10 @@ class HighlightEditor extends AnnotationEditor {
       [
         AnnotationEditorParamsType.HIGHLIGHT_DEFAULT_COLOR,
         HighlightEditor._defaultColor,
+      ],
+      [
+        AnnotationEditorParamsType.HIGHLIGHT_THICKNESS,
+        HighlightEditor._defaultThickness,
       ],
     ];
   }
@@ -139,6 +231,10 @@ class HighlightEditor extends AnnotationEditor {
         AnnotationEditorParamsType.HIGHLIGHT_COLOR,
         this.color || HighlightEditor._defaultColor,
       ],
+      [
+        AnnotationEditorParamsType.HIGHLIGHT_THICKNESS,
+        this.#thickness || HighlightEditor._defaultThickness,
+      ],
     ];
   }
 
@@ -147,20 +243,39 @@ class HighlightEditor extends AnnotationEditor {
    * @param {string} color
    */
   #updateColor(color) {
+    const setColor = col => {
+      this.color = col;
+      this.parent?.drawLayer.changeColor(this.#id, col);
+      this.#colorPicker?.updateColor(col);
+    };
     const savedColor = this.color;
     this.addCommands({
-      cmd: () => {
-        this.color = color;
-        this.parent?.drawLayer.changeColor(this.#id, color);
-        this.#colorPicker?.updateColor(color);
-      },
-      undo: () => {
-        this.color = savedColor;
-        this.parent?.drawLayer.changeColor(this.#id, savedColor);
-        this.#colorPicker?.updateColor(savedColor);
-      },
+      cmd: setColor.bind(this, color),
+      undo: setColor.bind(this, savedColor),
+      post: this._uiManager.updateUI.bind(this._uiManager, this),
       mustExec: true,
       type: AnnotationEditorParamsType.HIGHLIGHT_COLOR,
+      overwriteIfSameType: true,
+      keepUndo: true,
+    });
+  }
+
+  /**
+   * Update the thickness and make this action undoable.
+   * @param {number} thickness
+   */
+  #updateThickness(thickness) {
+    const savedThickness = this.#thickness;
+    const setThickness = th => {
+      this.#thickness = th;
+      this.#changeThickness(th);
+    };
+    this.addCommands({
+      cmd: setThickness.bind(this, thickness),
+      undo: setThickness.bind(this, savedThickness),
+      post: this._uiManager.updateUI.bind(this._uiManager, this),
+      mustExec: true,
+      type: AnnotationEditorParamsType.INK_THICKNESS,
       overwriteIfSameType: true,
       keepUndo: true,
     });
@@ -193,12 +308,19 @@ class HighlightEditor extends AnnotationEditor {
 
   /** @inheritdoc */
   fixAndSetPosition() {
-    return super.fixAndSetPosition(0);
+    return super.fixAndSetPosition(this.#getRotation());
+  }
+
+  /** @inheritdoc */
+  getBaseTranslation() {
+    // The editor itself doesn't have any CSS border (we're drawing one
+    // ourselves in using SVG).
+    return [0, 0];
   }
 
   /** @inheritdoc */
   getRect(tx, ty) {
-    return super.getRect(tx, ty, 0);
+    return super.getRect(tx, ty, this.#getRotation());
   }
 
   /** @inheritdoc */
@@ -226,7 +348,7 @@ class HighlightEditor extends AnnotationEditor {
     this.#addToDrawLayer();
 
     if (!this.isAttachedToDOM) {
-      // At some point this editor was removed and we're rebuilting it,
+      // At some point this editor was removed and we're rebuilding it,
       // hence we must add it to its parent.
       this.parent.add(this);
     }
@@ -250,6 +372,18 @@ class HighlightEditor extends AnnotationEditor {
     }
   }
 
+  #changeThickness(thickness) {
+    if (!this.#isFreeHighlight) {
+      return;
+    }
+    this.#createFreeOutlines({
+      highlightOutlines: this.#highlightOutlines.getNewOutline(thickness / 2),
+    });
+    this.fixAndSetPosition();
+    const [parentWidth, parentHeight] = this.parentDimensions;
+    this.setDims(this.width * parentWidth, this.height * parentHeight);
+  }
+
   #cleanDrawLayer() {
     if (this.#id === null || !this.parent) {
       return;
@@ -270,10 +404,10 @@ class HighlightEditor extends AnnotationEditor {
         this.color,
         this.#opacity
       ));
+    this.#outlineId = parent.drawLayer.highlightOutline(this.#focusOutlines);
     if (this.#highlightDiv) {
       this.#highlightDiv.style.clipPath = this.#clipPathId;
     }
-    this.#outlineId = parent.drawLayer.highlightOutline(this.#focusOutlines);
   }
 
   static #rotateBbox({ x, y, width, height }, angle) {
@@ -310,10 +444,19 @@ class HighlightEditor extends AnnotationEditor {
 
   /** @inheritdoc */
   rotate(angle) {
+    // We need to rotate the svgs because of the coordinates system.
     const { drawLayer } = this.parent;
+    let box;
+    if (this.#isFreeHighlight) {
+      angle = (angle - this.rotation + 360) % 360;
+      box = HighlightEditor.#rotateBbox(this.#highlightOutlines.box, angle);
+    } else {
+      // An highlight annotation is always drawn horizontally.
+      box = HighlightEditor.#rotateBbox(this, angle);
+    }
     drawLayer.rotate(this.#id, angle);
     drawLayer.rotate(this.#outlineId, angle);
-    drawLayer.updateBox(this.#id, HighlightEditor.#rotateBbox(this, angle));
+    drawLayer.updateBox(this.#id, box);
     drawLayer.updateBox(
       this.#outlineId,
       HighlightEditor.#rotateBbox(this.#focusOutlines.box, angle)
@@ -327,6 +470,9 @@ class HighlightEditor extends AnnotationEditor {
     }
 
     const div = super.render();
+    if (this.#isFreeHighlight) {
+      div.classList.add("free");
+    }
     const highlightDiv = (this.#highlightDiv = document.createElement("div"));
     div.append(highlightDiv);
     highlightDiv.className = "internal";
@@ -361,7 +507,16 @@ class HighlightEditor extends AnnotationEditor {
     this.parent?.drawLayer.removeClass(this.#outlineId, "selected");
   }
 
+  #getRotation() {
+    // Highlight annotations are always drawn horizontally but if
+    // a free highlight annotation can be rotated.
+    return this.#isFreeHighlight ? this.rotation : 0;
+  }
+
   #serializeBoxes(rect) {
+    if (this.#isFreeHighlight) {
+      return null;
+    }
     const [pageWidth, pageHeight] = this.pageDimensions;
     const boxes = this.#boxes;
     const quadPoints = new Array(boxes.length * 8);
@@ -384,7 +539,80 @@ class HighlightEditor extends AnnotationEditor {
   }
 
   #serializeOutlines(rect) {
-    return this.#highlightOutlines.serialize(rect, 0);
+    return this.#highlightOutlines.serialize(rect, this.#getRotation());
+  }
+
+  static startHighlighting(parent, isLTR, { target: textLayer, x, y }) {
+    const {
+      x: layerX,
+      y: layerY,
+      width: parentWidth,
+      height: parentHeight,
+    } = textLayer.getBoundingClientRect();
+    const pointerMove = e => {
+      this.#highlightMove(parent, e);
+    };
+    const pointerDownOptions = { capture: true, passive: false };
+    const pointerDown = e => {
+      // Avoid to have undesired clicks during the drawing.
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const pointerUpCallback = e => {
+      textLayer.removeEventListener("pointermove", pointerMove);
+      window.removeEventListener("blur", pointerUpCallback);
+      window.removeEventListener("pointerup", pointerUpCallback);
+      window.removeEventListener(
+        "pointerdown",
+        pointerDown,
+        pointerDownOptions
+      );
+      window.removeEventListener("contextmenu", noContextMenu);
+      this.#endHighlight(parent, e);
+    };
+    window.addEventListener("blur", pointerUpCallback);
+    window.addEventListener("pointerup", pointerUpCallback);
+    window.addEventListener("pointerdown", pointerDown, pointerDownOptions);
+    window.addEventListener("contextmenu", noContextMenu);
+
+    textLayer.addEventListener("pointermove", pointerMove);
+    this._freeHighlight = new FreeOutliner(
+      { x, y },
+      [layerX, layerY, parentWidth, parentHeight],
+      parent.scale,
+      this._defaultThickness / 2,
+      isLTR,
+      /* innerMargin = */ 0.001
+    );
+    ({ id: this._freeHighlightId, clipPathId: this._freeHighlightClipId } =
+      parent.drawLayer.highlight(
+        this._freeHighlight,
+        this._defaultColor,
+        this._defaultOpacity,
+        /* isPathUpdatable = */ true
+      ));
+  }
+
+  static #highlightMove(parent, event) {
+    if (this._freeHighlight.add(event)) {
+      // Redraw only if the point has been added.
+      parent.drawLayer.updatePath(this._freeHighlightId, this._freeHighlight);
+    }
+  }
+
+  static #endHighlight(parent, event) {
+    if (!this._freeHighlight.isEmpty()) {
+      parent.createAndAddNewEditor(event, false, {
+        highlightId: this._freeHighlightId,
+        highlightOutlines: this._freeHighlight.getOutlines(),
+        clipPathId: this._freeHighlightClipId,
+      });
+    } else {
+      parent.drawLayer.removeFreeHighlight(this._freeHighlightId);
+    }
+    this._freeHighlightId = -1;
+    this._freeHighlight = null;
+    this._freeHighlightClipId = "";
   }
 
   /** @inheritdoc */
@@ -430,11 +658,12 @@ class HighlightEditor extends AnnotationEditor {
       annotationType: AnnotationEditorType.HIGHLIGHT,
       color,
       opacity: this.#opacity,
+      thickness: this.#thickness,
       quadPoints: this.#serializeBoxes(rect),
       outlines: this.#serializeOutlines(rect),
       pageIndex: this.pageIndex,
       rect,
-      rotation: 0,
+      rotation: this.#getRotation(),
       structTreeParentId: this._structTreeParentId,
     };
   }

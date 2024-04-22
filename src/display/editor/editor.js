@@ -68,6 +68,10 @@ class AnnotationEditor {
 
   #moveInDOMTimeout = null;
 
+  #prevDragX = 0;
+
+  #prevDragY = 0;
+
   _initialOptions = Object.create(null);
 
   _uiManager = null;
@@ -468,7 +472,7 @@ class AnnotationEditor {
     // the position: it'll be done when the user will release the mouse button.
 
     let { x, y } = this;
-    const [bx, by] = this.#getBaseTranslation();
+    const [bx, by] = this.getBaseTranslation();
     x += bx;
     y += by;
 
@@ -477,7 +481,14 @@ class AnnotationEditor {
     this.div.scrollIntoView({ block: "nearest" });
   }
 
-  #getBaseTranslation() {
+  /**
+   * Get the translation to take into account the editor border.
+   * The CSS engine positions the element by taking the border into account so
+   * we must apply the opposite translation to have the editor in the right
+   * position.
+   * @returns {Array<number>}
+   */
+  getBaseTranslation() {
     const [parentWidth, parentHeight] = this.parentDimensions;
     const { _borderLineWidth } = AnnotationEditor;
     const x = _borderLineWidth / parentWidth;
@@ -528,7 +539,7 @@ class AnnotationEditor {
     this.x = x /= pageWidth;
     this.y = y /= pageHeight;
 
-    const [bx, by] = this.#getBaseTranslation();
+    const [bx, by] = this.getBaseTranslation();
     x += bx;
     y += by;
 
@@ -1035,9 +1046,18 @@ class AnnotationEditor {
 
     let pointerMoveOptions, pointerMoveCallback;
     if (isSelected) {
+      this.div.classList.add("moving");
       pointerMoveOptions = { passive: true, capture: true };
+      this.#prevDragX = event.clientX;
+      this.#prevDragY = event.clientY;
       pointerMoveCallback = e => {
-        const [tx, ty] = this.screenToPageTranslation(e.movementX, e.movementY);
+        const { clientX: x, clientY: y } = e;
+        const [tx, ty] = this.screenToPageTranslation(
+          x - this.#prevDragX,
+          y - this.#prevDragY
+        );
+        this.#prevDragX = x;
+        this.#prevDragY = y;
         this._uiManager.dragSelectedEditors(tx, ty);
       };
       window.addEventListener(
@@ -1051,6 +1071,7 @@ class AnnotationEditor {
       window.removeEventListener("pointerup", pointerUpCallback);
       window.removeEventListener("blur", pointerUpCallback);
       if (isSelected) {
+        this.div.classList.remove("moving");
         window.removeEventListener(
           "pointermove",
           pointerMoveCallback,

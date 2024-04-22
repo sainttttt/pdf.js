@@ -14,9 +14,13 @@
  */
 
 import {
+  awaitPromise,
   closePages,
+  createPromise,
   getEditorSelector,
   getSerialized,
+  kbBigMoveLeft,
+  kbBigMoveUp,
   kbSelectAll,
   loadAndWait,
   scrollIntoView,
@@ -30,8 +34,19 @@ const selectAll = async page => {
   );
 };
 
-const getSpanRectFromText = (page, pageNumber, text) => {
-  return page.evaluate(
+const waitForPointerUp = page =>
+  createPromise(page, resolve => {
+    window.addEventListener("pointerup", resolve, { once: true });
+  });
+
+const getXY = (page, selector) =>
+  page.evaluate(sel => {
+    const bbox = document.querySelector(sel).getBoundingClientRect();
+    return `${bbox.x}::${bbox.y}`;
+  }, selector);
+
+const getSpanRectFromText = (page, pageNumber, text) =>
+  page.evaluate(
     (number, content) => {
       for (const el of document.querySelectorAll(
         `.page[data-page-number="${number}"] > .textLayer > span`
@@ -46,7 +61,6 @@ const getSpanRectFromText = (page, pageNumber, text) => {
     pageNumber,
     text
   );
-};
 
 describe("Highlight Editor", () => {
   describe("Editor must be removed without exception", () => {
@@ -327,6 +341,342 @@ describe("Highlight Editor", () => {
           expect(serialized.outlines[0].length)
             .withContext(`In ${browserName}`)
             .toEqual(8);
+        })
+      );
+    });
+  });
+
+  describe("Color picker and keyboard", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait(
+        "tracemonkey.pdf",
+        ".annotationEditorLayer",
+        null,
+        null,
+        {
+          highlightEditorColors:
+            "yellow=#FFFF00,green=#00FF00,blue=#0000FF,pink=#FF00FF,red=#FF0000",
+        }
+      );
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that we can use the keyboard to select a color", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.click("#editorHighlight");
+          await page.waitForSelector(".annotationEditorLayer.highlightEditing");
+          const sel = getEditorSelector(0);
+
+          const rect = await getSpanRectFromText(page, 1, "Abstract");
+          const x = rect.x + rect.width / 2;
+          const y = rect.y + rect.height / 2;
+          await page.mouse.click(x, y, { count: 2 });
+
+          await page.waitForSelector(sel);
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlightOutline.selected`
+          );
+
+          await page.waitForSelector(`${sel} .editToolbar button.colorPicker`);
+          await page.click(`${sel} .editToolbar button.colorPicker`);
+          await page.waitForSelector(
+            `${sel} .editToolbar button[title = "Red"]`
+          );
+          await page.click(`${sel} .editToolbar button[title = "Red"]`);
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlight[fill = "#FF0000"]`
+          );
+
+          await page.keyboard.press("ArrowUp");
+          await page.waitForSelector(
+            `${sel} .editToolbar button[title = "Pink"]:focus`
+          );
+          await page.keyboard.press("Enter");
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlight[fill = "#FF00FF"]`
+          );
+
+          await page.keyboard.press("ArrowUp");
+          await page.waitForSelector(
+            `${sel} .editToolbar button[title = "Blue"]:focus`
+          );
+          await page.keyboard.press(" ");
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlight[fill = "#0000FF"]`
+          );
+
+          await page.keyboard.press("ArrowLeft");
+          await page.waitForSelector(
+            `${sel} .editToolbar button[title = "Green"]:focus`
+          );
+          await page.keyboard.press("Enter");
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlight[fill = "#00FF00"]`
+          );
+
+          await page.keyboard.press("ArrowRight");
+          await page.waitForSelector(
+            `${sel} .editToolbar button[title = "Blue"]:focus`
+          );
+          await page.keyboard.press("Enter");
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlight[fill = "#0000FF"]`
+          );
+
+          await page.keyboard.press("ArrowDown");
+          await page.waitForSelector(
+            `${sel} .editToolbar button[title = "Pink"]:focus`
+          );
+          await page.keyboard.press(" ");
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlight[fill = "#FF00FF"]`
+          );
+
+          for (let i = 0; i < 4; i++) {
+            await page.keyboard.press("ArrowUp");
+          }
+          await page.waitForSelector(
+            `${sel} .editToolbar button.colorPicker .dropdown.hidden`
+          );
+          await page.keyboard.press("ArrowDown");
+          await page.waitForSelector(
+            `${sel} .editToolbar button.colorPicker .dropdown:not(.hidden)`
+          );
+          await page.keyboard.press("ArrowUp");
+          await page.waitForSelector(
+            `${sel} .editToolbar button.colorPicker .dropdown.hidden`
+          );
+          await page.keyboard.press(" ");
+          await page.waitForSelector(
+            `${sel} .editToolbar button.colorPicker .dropdown:not(.hidden)`
+          );
+        })
+      );
+    });
+  });
+
+  describe("Text highlights aren't draggable", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait(
+        "tracemonkey.pdf",
+        ".annotationEditorLayer",
+        null,
+        null,
+        { highlightEditorColors: "red=#AB0000" }
+      );
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that a text highlight don't move when arrows are pressed", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.click("#editorHighlight");
+          await page.waitForSelector(".annotationEditorLayer.highlightEditing");
+
+          const rect = await getSpanRectFromText(page, 1, "Abstract");
+          const x = rect.x + rect.width / 2;
+          const y = rect.y + rect.height / 2;
+          await page.mouse.click(x, y, { count: 2 });
+
+          await page.waitForSelector(`${getEditorSelector(0)}`);
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlightOutline.selected`
+          );
+          await page.focus(getEditorSelector(0));
+
+          const xy = await getXY(page, getEditorSelector(0));
+          for (let i = 0; i < 5; i++) {
+            await kbBigMoveLeft(page);
+          }
+          expect(await getXY(page, getEditorSelector(0)))
+            .withContext(`In ${browserName}`)
+            .toEqual(xy);
+
+          for (let i = 0; i < 5; i++) {
+            await kbBigMoveUp(page);
+          }
+          expect(await getXY(page, getEditorSelector(0)))
+            .withContext(`In ${browserName}`)
+            .toEqual(xy);
+        })
+      );
+    });
+  });
+
+  describe("Color picker and click outside", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait("tracemonkey.pdf", ".annotationEditorLayer");
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that the dropdown is hidden", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.click("#editorHighlight");
+          await page.waitForSelector(".annotationEditorLayer.highlightEditing");
+          const sel = getEditorSelector(0);
+
+          const rect = await getSpanRectFromText(page, 1, "Abstract");
+          const x = rect.x + rect.width / 2;
+          const y = rect.y + rect.height / 2;
+          await page.mouse.click(x, y, { count: 2 });
+
+          await page.waitForSelector(sel);
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlightOutline.selected`
+          );
+
+          await page.waitForSelector(`${sel} .editToolbar button.colorPicker`);
+          await page.click(`${sel} .editToolbar button.colorPicker`);
+          await page.waitForSelector(
+            `${sel} .editToolbar button[title = "Red"]`
+          );
+          await page.mouse.click(x, y - rect.height);
+          await page.waitForSelector(
+            `${sel} .editToolbar button.colorPicker .dropdown.hidden`
+          );
+        })
+      );
+    });
+  });
+
+  describe("Color picker can annoy the user when selecting some text", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait("tracemonkey.pdf", ".annotationEditorLayer");
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that editor is unselected when the mouse is down on the text layer", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.click("#editorHighlight");
+          await page.waitForSelector(".annotationEditorLayer.highlightEditing");
+          const sel = getEditorSelector(0);
+
+          const rect = await getSpanRectFromText(page, 1, "Abstract");
+          const x = rect.x + rect.width / 2;
+          const y = rect.y + rect.height / 2;
+          await page.mouse.click(x, y, { count: 2 });
+
+          await page.waitForSelector(sel);
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlightOutline.selected`
+          );
+
+          await page.waitForSelector(`${sel} .editToolbar button.colorPicker`);
+          await page.mouse.click(x, y - rect.height);
+          await page.waitForSelector(
+            `.page[data-page-number = "1"] svg.highlightOutline:not(.selected)`
+          );
+        })
+      );
+    });
+  });
+
+  describe("Free highlight thickness can be changed", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait(
+        "empty.pdf",
+        ".annotationEditorLayer",
+        null,
+        null,
+        { highlightEditorColors: "yellow=#000000" }
+      );
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check that the thickness is correctly updated", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.click("#editorHighlight");
+          await page.waitForSelector(".annotationEditorLayer.highlightEditing");
+
+          const rect = await page.$eval(".annotationEditorLayer", el => {
+            // With Chrome something is wrong when serializing a DomRect,
+            // hence we extract the values and just return them.
+            const { x, y } = el.getBoundingClientRect();
+            return { x, y };
+          });
+
+          for (let i = 0; i < 3; i++) {
+            const x = rect.x + 120 + i * 120;
+            const y = rect.y + 120 + i * 120;
+            const clickHandle = await waitForPointerUp(page);
+            await page.mouse.move(x, y);
+            await page.mouse.down();
+            await page.mouse.move(x + 100, y + 100);
+            await page.mouse.up();
+            await awaitPromise(clickHandle);
+
+            await page.waitForSelector(getEditorSelector(i));
+          }
+
+          let value = 12;
+          await waitForSerialized(page, 3);
+          let serialized = await getSerialized(page);
+          expect(serialized.map(x => x.thickness))
+            .withContext(`In ${browserName}`)
+            .toEqual([value, value, value]);
+
+          await selectAll(page);
+
+          const prevWidth = await page.evaluate(
+            sel => document.querySelector(sel).getBoundingClientRect().width,
+            getEditorSelector(0)
+          );
+
+          value = 24;
+          page.evaluate(val => {
+            window.PDFViewerApplication.eventBus.dispatch(
+              "switchannotationeditorparams",
+              {
+                source: null,
+                type: window.pdfjsLib.AnnotationEditorParamsType
+                  .HIGHLIGHT_THICKNESS,
+                value: val,
+              }
+            );
+          }, value);
+
+          await page.waitForFunction(
+            (w, sel) =>
+              document.querySelector(sel).getBoundingClientRect().width !== w,
+            {},
+            prevWidth,
+            getEditorSelector(0)
+          );
+
+          await waitForSerialized(page, 3);
+          serialized = await getSerialized(page);
+          expect(serialized.map(x => x.thickness))
+            .withContext(`In ${browserName}`)
+            .toEqual([value, value, value]);
         })
       );
     });
