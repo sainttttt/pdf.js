@@ -38,12 +38,12 @@ const PresentationModeState = {
 };
 
 const SidebarView = {
-  UNKNOWN: -1,
+  //UNKNOWN: -1,
   NONE: 0,
-  THUMBS: 1, // Default value.
-  OUTLINE: 2,
-  ATTACHMENTS: 3,
-  LAYERS: 4,
+  //THUMBS: 1, // Default value.
+  //OUTLINE: 2,
+  //ATTACHMENTS: 3,
+  //LAYERS: 4,
 };
 
 const TextLayerMode = {
@@ -62,9 +62,9 @@ const ScrollMode = {
 
 const SpreadMode = {
   UNKNOWN: -1,
-  NONE: 0, // Default value.
-  ODD: 1,
-  EVEN: 2,
+  //NONE: 0, // Default value.
+  //ODD: 1,
+  //EVEN: 2,
 };
 
 const CursorTool = {
