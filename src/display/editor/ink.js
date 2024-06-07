@@ -57,11 +57,11 @@ class InkEditor extends AnnotationEditor {
 
   #requestFrameCallback = null;
 
-  static _defaultColor = null;
+  static _defaultColor = "#900020";
 
-  static _defaultOpacity = 1;
+  static _defaultOpacity = 0.3;
 
-  static _defaultThickness = 1;
+  static _defaultThickness = 10;
 
   static _type = "ink";
 

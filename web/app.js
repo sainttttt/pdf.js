@@ -92,6 +92,7 @@ const PDFViewerApplication = {
   initialBookmark: document.location.hash.substring(1),
   _initializedCapability: new PromiseCapability(),
   appConfig: null,
+  ws: null,
   pdfDocument: null,
   pdfLoadingTask: null,
   printService: null,
@@ -1208,6 +1209,7 @@ view: null,
 
     this.toolbar?.setPagesCount(pdfDocument.numPages, false);
     this.secondaryToolbar?.setPagesCount(pdfDocument.numPages);
+    this.ws.send(`numpages|${pdfDocument.numPages}`);
 
     if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("CHROME")) {
       const baseUrl = location.href.split("#", 1)[0];
@@ -2185,9 +2187,9 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       // Removing of the following line will not guarantee that the viewer will
       // start accepting URLs from foreign origin -- CORS headers on the remote
       // server must be properly configured.
-      if (fileOrigin !== viewerOrigin) {
-        throw new Error("file origin does not match viewer's");
-      }
+      // if (fileOrigin !== viewerOrigin) {
+      //   throw new Error("file origin does not match viewer's");
+      // }
     } catch (ex) {
       PDFViewerApplication.l10n.get("pdfjs-loading-error").then(msg => {
         PDFViewerApplication._documentError(msg, { message: ex?.message });
@@ -2571,6 +2573,8 @@ function webViewerRotationChanging(evt) {
 
 function webViewerPageChanging({ pageNumber, pageLabel }) {
   PDFViewerApplication.toolbar?.setPageNumber(pageNumber, pageLabel);
+  PDFViewerApplication.ws.send(`pagenum|${pageNumber}`);
+  PDFViewerApplication.ws.send(`numpages|${PDFViewerApplication.pdfDocument.numPages}`);
   PDFViewerApplication.secondaryToolbar?.setPageNumber(pageNumber);
 
   if (PDFViewerApplication.pdfSidebar?.visibleView === SidebarView.THUMBS) {
@@ -2759,88 +2763,45 @@ window.addEventListener("DOMContentLoaded", () => {
 })
 
 
-    function pos(e) {
-        // touch event
-        if (e.targetTouches && (e.targetTouches.length == 1)) {
-            return {   x: e.targetTouches[0].clientX,
-                       y: e.targetTouches[0].clientY,
-                   }
-        }
-
-        // // mouse event
-        // return e.clientY;
+function pos(e) {
+  // touch event
+  if (e.targetTouches && (e.targetTouches.length == 1)) {
+    return {   x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY,
     }
+  }
+}
 
-    function scroll(delta, direction) {
-      console.log('scroll', delta, direction);
-
-      var app = PDFViewerApplication;
-        // app.offset = (y > app.max) ? app.max : (y < app.min) ? app.min : y;
-      // console.log(app.offset);
-
-      if (direction == 'y') {
-        app.offset = app.pdfViewer.container.scrollTop
-        app.pdfViewer.container.scrollTop+= delta;
-      } else {
-        // app.offset = app.pdfViewer.container.scrollLeft;
-        // app.pdfViewer.container.scrollLeft += delta;
-        app.xTranslate += delta
-        $("#viewer").css({'transform' : 'translateX(' + (-app.xTranslate) + 'px)'});
-      }
-        // app.view.style['transform'] = 'translateY(' + (-app.offset) + 'px)';
-        // app.pdfViewer.container.scrollTop = -app.offset;
-      // app.pdfViewer.container.scrollTop += y;
-     // scrollProp  += delta;
-      //
-        // indicator.style[xform] = 'translateY(' + (offset * relative) + 'px)';
-    }
-
-    function track() {
-      console.log('track');
-        var now, elapsed, deltaY, v;
-
-      var app = PDFViewerApplication;
-
-        now = Date.now();
-        elapsed = now - app.timestamp;
-        app.timestamp = now;
-        deltaY = app.offset - app.frame;
-      console.log('deltaY track', deltaY);
-        app.frame = app.offset;
-
-        v = 1000 * deltaY / (1 + elapsed);
-        app.velocity = 0.8 * v + 0.2 * app.velocity;
-    }
-
-
+function scroll(delta, direction) {
+  console.log('scroll', delta, direction);
+  var app = PDFViewerApplication;
+  if (direction == 'y') {
+    app.offset = app.pdfViewer.container.scrollTop;
+    app.pdfViewer.container.scrollTop += delta;
+  } else {
+    app.xTranslate += delta;
+    document.querySelector("#viewer").style.transform = 'translateX(' + -app.xTranslate + 'px)';
+  }
+}
 
 function webViewerTouchStart(evt) {
-
   var app = PDFViewerApplication;
   console.log('touch start');
-
-        app.pressed = true;
-        app.reference = pos(evt);
-
-        app.velocity = app.amplitude = 0;
-        app.frame = app.offset;
-        app.timestamp = Date.now();
-        clearInterval(app.ticker);
-        app.ticker = setInterval(track, 100);
-
-  if (
-    PDFViewerApplication.pdfViewer.isInPresentationMode ||
-    evt.touches.length < 2
-  ) {
+  app.pressed = true;
+  app.reference = pos(evt);
+  app.velocity = app.amplitude = 0;
+  app.frame = app.offset;
+  app.timestamp = Date.now();
+  clearInterval(app.ticker);
+  // app.ticker = setInterval(track, 100);
+  if (PDFViewerApplication.pdfViewer.isInPresentationMode || evt.touches.length < 2) {
     return;
   }
-  evt.preventDefault();
-
-  if (evt.touches.length !== 2 || PDFViewerApplication.overlayManager.active) {
+  //evt.preventDefault();
+  if (evt.touches.length !== 2) {
     PDFViewerApplication._touchInfo = null;
     return;
   }
-
   let [touch0, touch1] = evt.touches;
   if (touch0.identifier > touch1.identifier) {
     [touch0, touch1] = [touch1, touch0];
@@ -2849,89 +2810,86 @@ function webViewerTouchStart(evt) {
     touch0X: touch0.pageX,
     touch0Y: touch0.pageY,
     touch1X: touch1.pageX,
-    touch1Y: touch1.pageY,
+    touch1Y: touch1.pageY
   };
 }
 
 function webViewerTouchMove(evt) {
-
-  var app = PDFViewerApplication;
-
-
-  $("#viewerContainer").css({"overflow-x": "hidden"});
-  var curPos, delta;
-  if (app.pressed) {
-    curPos = pos(evt);
-    var deltaY = app.reference.y - curPos.y;
-    var deltaX = app.reference.x - curPos.x;
-    console.log('deltaY', deltaY)
-    console.log('deltaX', deltaX)
-    // if (delta > 2 || delta < -2) {
-    app.reference = curPos;
-    if (Math.abs(deltaY) > Math.abs(deltaX)) {
-
-      // requestAnimationFrame(() => {scroll(deltaY, "y")});
-      console.log('scrollY')
-    } else {
-
-      // $("#viewerContainer").css({"overflow-x": "hidden"});
-      evt.preventDefault();
-      requestAnimationFrame(() => {scroll(deltaX, "x")});
-
-      // console.log('scrollX')
+  if (evt.touches.length == 1) {
+    var app = PDFViewerApplication;
+    var curPos, delta;
+    if (app.pressed) {
+      curPos = pos(evt);
+      var deltaY = app.reference.y - curPos.y;
+      var deltaX = app.reference.x - curPos.x;
+      console.log('deltaY', deltaY);
+      console.log('deltaX', deltaX);
+      app.reference = curPos;
+      if (!app.direction) {
+        if (Math.abs(deltaX) - Math.abs(deltaY) > 3.0) {
+          app.direction = 'x';
+        } else {
+          app.direction = 'y';
+        }
+      }
+      if (app.direction == 'y') {
+        console.log('scrollY 3');
+      } else {
+        console.log('scrollX 2');
+        var editorInkButton = document.getElementById("editorInk");
+        console.log("classlist: ", !editorInkButton.classList.contains("toggled"));
+        if (!editorInkButton.classList.contains("toggled")) {
+          evt.preventDefault();
+          requestAnimationFrame(() => {
+            scroll(deltaX, "x");
+          });
+        }
+      }
     }
-      // app.pdfViewer.container.scrollTop += delta;;
-    // }
   }
-
-
   if (!PDFViewerApplication._touchInfo || evt.touches.length !== 2) {
     return;
   }
-
-  const { pdfViewer, _touchInfo, supportsPinchToZoom } = PDFViewerApplication;
+  const {
+    pdfViewer,
+    _touchInfo,
+    supportsPinchToZoom
+  } = PDFViewerApplication;
   let [touch0, touch1] = evt.touches;
   if (touch0.identifier > touch1.identifier) {
     [touch0, touch1] = [touch1, touch0];
   }
-  const { pageX: page0X, pageY: page0Y } = touch0;
-  const { pageX: page1X, pageY: page1Y } = touch1;
+  const {
+    pageX: page0X,
+    pageY: page0Y
+  } = touch0;
+  const {
+    pageX: page1X,
+    pageY: page1Y
+  } = touch1;
   const {
     touch0X: pTouch0X,
     touch0Y: pTouch0Y,
     touch1X: pTouch1X,
-    touch1Y: pTouch1Y,
+    touch1Y: pTouch1Y
   } = _touchInfo;
-
-  if (
-    Math.abs(pTouch0X - page0X) <= 1 &&
-    Math.abs(pTouch0Y - page0Y) <= 1 &&
-    Math.abs(pTouch1X - page1X) <= 1 &&
-    Math.abs(pTouch1Y - page1Y) <= 1
-  ) {
-    // Touches are really too close and it's hard do some basic
-    // geometry in order to guess something.
+  if (Math.abs(pTouch0X - page0X) <= 1 && Math.abs(pTouch0Y - page0Y) <= 1 && Math.abs(pTouch1X - page1X) <= 1 && Math.abs(pTouch1Y - page1Y) <= 1) {
     return;
   }
-
   _touchInfo.touch0X = page0X;
   _touchInfo.touch0Y = page0Y;
   _touchInfo.touch1X = page1X;
   _touchInfo.touch1Y = page1Y;
-
   if (pTouch0X === page0X && pTouch0Y === page0Y) {
-    // First touch is fixed, if the vectors are collinear then we've a pinch.
     const v1X = pTouch1X - page0X;
     const v1Y = pTouch1Y - page0Y;
     const v2X = page1X - page0X;
     const v2Y = page1Y - page0Y;
     const det = v1X * v2Y - v1Y * v2X;
-    // 0.02 is approximatively sin(0.15deg).
     if (Math.abs(det) > 0.02 * Math.hypot(v1X, v1Y) * Math.hypot(v2X, v2Y)) {
       return;
     }
   } else if (pTouch1X === page1X && pTouch1Y === page1Y) {
-    // Second touch is fixed, if the vectors are collinear then we've a pinch.
     const v1X = pTouch0X - page1X;
     const v1Y = pTouch0Y - page1Y;
     const v2X = page0X - page1X;
@@ -2947,22 +2905,15 @@ function webViewerTouchMove(evt) {
     const diff1Y = page1Y - pTouch1Y;
     const dotProduct = diff0X * diff1X + diff0Y * diff1Y;
     if (dotProduct >= 0) {
-      // The two touches go in almost the same direction.
       return;
     }
   }
-
   evt.preventDefault();
-
   const distance = Math.hypot(page0X - page1X, page0Y - page1Y) || 1;
   const pDistance = Math.hypot(pTouch0X - pTouch1X, pTouch0Y - pTouch1Y) || 1;
   const previousScale = pdfViewer.currentScale;
   if (supportsPinchToZoom) {
-    const newScaleFactor = PDFViewerApplication._accumulateFactor(
-      previousScale,
-      distance / pDistance,
-      "_touchUnusedFactor"
-    );
+    const newScaleFactor = PDFViewerApplication._accumulateFactor(previousScale, distance / pDistance, "_touchUnusedFactor");
     if (newScaleFactor < 1) {
       PDFViewerApplication.zoomOut(null, newScaleFactor);
     } else if (newScaleFactor > 1) {
@@ -2972,10 +2923,7 @@ function webViewerTouchMove(evt) {
     }
   } else {
     const PIXELS_PER_LINE_SCALE = 30;
-    const ticks = PDFViewerApplication._accumulateTicks(
-      (distance - pDistance) / PIXELS_PER_LINE_SCALE,
-      "_touchUnusedTicks"
-    );
+    const ticks = PDFViewerApplication._accumulateTicks((distance - pDistance) / PIXELS_PER_LINE_SCALE, "_touchUnusedTicks");
     if (ticks < 0) {
       PDFViewerApplication.zoomOut(-ticks);
     } else if (ticks > 0) {
@@ -2984,33 +2932,7 @@ function webViewerTouchMove(evt) {
       return;
     }
   }
-
-  PDFViewerApplication._centerAtPos(
-    previousScale,
-    (page0X + page1X) / 2,
-    (page0Y + page1Y) / 2
-  );
-}
-
-function autoScroll() {
-
-  var app = PDFViewerApplication;
-  var elapsed, delta;
-
-  console.log('autoScroll');
-  if (app.amplitude) {
-    elapsed = Date.now() - app.timestamp;
-    delta = -app.amplitude * Math.exp(-elapsed / app.timeConstant) * 0.1;
-    console.log('delta', delta);
-    // if (delta > 0.5 || delta < -0.5) {
-
-      // scroll(app.target + delta);
-      scroll(-delta, "y")
-      requestAnimationFrame(autoScroll);
-    // } else {
-      // scroll(app.target);
-    // }
-  }
+  PDFViewerApplication._centerAtPos(previousScale, (page0X + page1X) / 2, (page0Y + page1Y) / 2);
 }
 
 function webViewerTouchEnd(evt) {
@@ -3018,7 +2940,8 @@ function webViewerTouchEnd(evt) {
   console.log('ended');
   var app = PDFViewerApplication;
 
-        app.pressed = false;
+  app.pressed = false;
+  app.direction = false;
 
         clearInterval(app.ticker);
   console.log('vel', app.velocity);

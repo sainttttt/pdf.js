@@ -186,7 +186,6 @@ function getViewerConfiguration() {
 }
 
 function webViewerLoad() {
-  console.log('MEOW WOOF')
   const config = getViewerConfiguration();
 
   if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("GENERIC")) {
@@ -214,19 +213,70 @@ function webViewerLoad() {
   }
   PDFViewerApplication.run(config);
 
+
   // Dark mode
   document.getElementById('viewer').style.filter = 'invert(64%) contrast(228%) brightness(80%) hue-rotate(180deg)'
 
   // Toggle visibility of toolbar
   let toolbar = document.getElementsByClassName("toolbar")[0]
-  document.getElementById("viewerContainer").addEventListener("dblclick",  event => {
-    if (window.getComputedStyle(toolbar).display === 'block') {
-      toolbar.style.display = "none";
-    } else {
-      toolbar.style.display = "block";
-    }
-  });
 
+  // Hide on double click (for web)
+
+  // document.getElementById("viewerContainer").addEventListener("dblclick",  event => {
+  //   if (window.getComputedStyle(toolbar).display === 'block') {
+  //     toolbar.style.display = "none";
+  //   } else {
+  //     toolbar.style.display = "block";
+  //   }
+  // });
+
+
+  // Always hide toolbar (for app)
+  toolbar.style.display = "none";
+
+  // websocket stuff (for app)
+  PDFViewerApplication.ws = new ReconnectingWebSocket('ws://localhost:9001')
+
+  PDFViewerApplication.ws.onopen = () => {
+    console.log('ws opened on browser')
+    PDFViewerApplication.ws.send("opened on browser")
+
+    clearTimeout(PDFViewerApplication.ping)
+    PDFViewerApplication.ping = setTimeout(() => {
+      PDFViewerApplication.ws.send("ping")
+    }, 1000)
+  }
+
+  PDFViewerApplication.ws.onmessage = (message) => {
+    var splitMsg = message.data.split("|")
+    console.log("splitmsg", splitMsg);
+    if (splitMsg[0] == "setPage") {
+      console.log(splitMsg[1])
+      let pageNumber = parseInt(splitMsg[1])
+      let toolbar = PDFViewerApplication.toolbar
+      PDFViewerApplication.toolbar?.setPageNumber(pageNumber, "")
+
+      toolbar.eventBus.dispatch("pagenumberchanged", {
+        source: toolbar,
+        value: pageNumber
+      });
+
+    } else if (splitMsg[0] == "toggleToolbar") {
+
+      let toolbar = document.getElementsByClassName("toolbar")[0];
+      console.log("here");
+      // document.getElementById("viewerContainer").onclick = event => {
+      if (window.getComputedStyle(toolbar).display === 'block') {
+        toolbar.style.display = "none";
+      } else {
+        toolbar.style.display = "block";
+      }
+      // };
+
+    } else if (splitMsg[0] == "highlight") {
+      document.getElementById("editorInk").click()
+    }
+  }
 
 }
 
