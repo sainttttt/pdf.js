@@ -1209,7 +1209,7 @@ view: null,
 
     this.toolbar?.setPagesCount(pdfDocument.numPages, false);
     this.secondaryToolbar?.setPagesCount(pdfDocument.numPages);
-    this.ws.send(`numpages|${pdfDocument.numPages}`);
+    // this.ws.send(`numpages|${pdfDocument.numPages}`);
 
     if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("CHROME")) {
       const baseUrl = location.href.split("#", 1)[0];
@@ -2573,8 +2573,8 @@ function webViewerRotationChanging(evt) {
 
 function webViewerPageChanging({ pageNumber, pageLabel }) {
   PDFViewerApplication.toolbar?.setPageNumber(pageNumber, pageLabel);
-  PDFViewerApplication.ws.send(`pagenum|${pageNumber}`);
-  PDFViewerApplication.ws.send(`numpages|${PDFViewerApplication.pdfDocument.numPages}`);
+  // PDFViewerApplication.ws.send(`pagenum|${pageNumber}`);
+  // PDFViewerApplication.ws.send(`numpages|${PDFViewerApplication.pdfDocument.numPages}`);
   PDFViewerApplication.secondaryToolbar?.setPageNumber(pageNumber);
 
   if (PDFViewerApplication.pdfSidebar?.visibleView === SidebarView.THUMBS) {
