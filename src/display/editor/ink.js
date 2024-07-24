@@ -43,6 +43,8 @@ class InkEditor extends AnnotationEditor {
 
   #currentPath2D = new Path2D();
 
+  #direction = false;
+
   #disableEditing = false;
 
   #hasSomethingToDraw = false;
@@ -373,6 +375,7 @@ class InkEditor extends AnnotationEditor {
     );
 
     this.isEditing = true;
+    this.#direction = false;
     if (!this.#isCanvasInitialized) {
       this.#isCanvasInitialized = true;
       this.#setCanvasDims();
@@ -400,18 +403,43 @@ class InkEditor extends AnnotationEditor {
    * @param {number} y
    */
   #draw(x, y) {
+    var newX, newY;
+    newX = x;
+    newY = y;
+
     const [lastX, lastY] = this.currentPath.at(-1);
-    if (this.currentPath.length > 1 && x === lastX && y === lastY) {
+    if (this.currentPath.length > 1 && newX === lastX && newY === lastY) {
       return;
     }
+
+    var deltaX = newX - lastX
+    var deltaY = newY - lastY
+
+    if (!this.#direction) {
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        this.#direction = "x"
+        newY = lastY
+      } else {
+        this.#direction = "y"
+        newX = lastX
+      }
+    }
+
+    if (this.#direction == "x") {
+      newY = lastY
+    } else {
+      newX = lastX
+    }
+
+
     const currentPath = this.currentPath;
     let path2D = this.#currentPath2D;
-    currentPath.push([x, y]);
+    currentPath.push([newX, newY]);
     this.#hasSomethingToDraw = true;
 
     if (currentPath.length <= 2) {
       path2D.moveTo(...currentPath[0]);
-      path2D.lineTo(x, y);
+      path2D.lineTo(newX, newY);
       return;
     }
 
@@ -424,12 +452,13 @@ class InkEditor extends AnnotationEditor {
       path2D,
       ...currentPath.at(-3),
       ...currentPath.at(-2),
-      x,
-      y
+      newX,
+      newY
     );
   }
 
   #endPath() {
+    this.#direction = "false";
     if (this.currentPath.length === 0) {
       return;
     }
