@@ -415,16 +415,19 @@ class InkEditor extends AnnotationEditor {
     var deltaX = newX - lastX
     var deltaY = newY - lastY
 
+
     if (!this.#direction) {
-      if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        this.#direction = "x"
-        newY = lastY
-      } else {
+
+      if (Math.abs(deltaY) - Math.abs(deltaX) > 0.1) {
         this.#direction = "y"
         newX = lastX
+      } else {
+        this.#direction = "x"
+        newY = lastY
       }
     }
 
+    var dir = this.#direction
     if (this.#direction == "x") {
       newY = lastY
     } else {
